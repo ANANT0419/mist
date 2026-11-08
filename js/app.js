@@ -18,15 +18,12 @@
   const camEl = $('cam');
   // The crop the mirror uses on screen, so a fingertip maps to exactly where you see it.
   const toGlass = (lx, ly) => {
-    const split = state.split;
-    const c = R.cover(camEl.videoWidth || 16, camEl.videoHeight || 9, split ? R.aspect / 2 : R.aspect);
-    const x = (.5 - lx) / c.x + .5;
-    return { x: split ? x / 2 : x, y: (.5 - ly) / c.y + .5 };
+    const c = R.cover(camEl.videoWidth || 16, camEl.videoHeight || 9);
+    return { x: (.5 - lx) / c.x + .5, y: (.5 - ly) / c.y + .5 };
   };
   const hands = new Mist.Hands(camEl, toGlass);
   hands.getAspect = () => R.aspect;
   const face = new Mist.Face(camEl);
-  const hooks = { stroke: null, breath: null };
 
   const FINGER_R = Mist.Hands.FINGER_R, FIST_R = .088;
   const LINGER = [
@@ -37,11 +34,8 @@
 
   const state = {
     strokes: [],
-    split: false,
     allowBreath: true,
     allowTouch: true,
-    overlay: null,
-    breath2: { x: 0, y: .5, r: .3, s: 0, seen: 0, sustain: 0 },
     frameLen: 0,
     soundKind: 0,
     fogLevel: 0,
@@ -86,12 +80,6 @@
   function addStroke(ax, ay, bx, by, kind, seed, radius) {
     if (!state.allowTouch) return;
     let r = radius || (kind ? FIST_R : FINGER_R);
-    if (state.split) {                      // your side of the glass only
-      const limit = .4985 - r / R.aspect;
-      if (ax > limit && bx > limit) return;
-      ax = Math.min(ax, limit); bx = Math.min(bx, limit);
-    }
-    if (hooks.stroke) hooks.stroke(ax, ay, bx, by, kind, r);
     if (!kind) r *= Math.min(1, R.aspect / 1.3);   // a tall window shouldn't mean a fat line
     const A = R.aspect;
     const s = { ax: ax * A, ay, bx: bx * A, by, r, kind, mem: 1, seed };
@@ -99,12 +87,6 @@
     state.frameLen += Math.hypot(s.bx - s.ax, s.by - s.ay);
     state.soundKind = kind;
     drops.feed(s.ax, s.ay, s.bx, s.by, r, kind, A);
-  }
-
-  function addRemoteStroke(ax, ay, bx, by, kind, r) {
-    const A = R.aspect;
-    state.strokes.push({ ax: ax * A, ay, bx: bx * A, by, r, kind, mem: 1, seed: .4 });
-    drops.feed(ax * A, ay, bx * A, by, r, kind, A);
   }
 
   // ---------- Pointer ----------
@@ -339,8 +321,7 @@
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.code === 'Space') {
       e.preventDefault();
-      // Solo only: in a match you have to actually make the face.
-      if (!e.repeat && !state.split) { sound.ensure(); state.space = true; cancelIntro(); }
+      if (!e.repeat) { sound.ensure(); state.space = true; cancelIntro(); }
       return;
     }
     if (e.repeat) return;
@@ -531,7 +512,8 @@
     sound.breathe(Math.max(spaceS, state.allowBreath ? faceS : 0));
     $('status').dataset.blow = s > .05 ? '1' : '0';
 
-    if (s > .02) state.sustain = Math.min(state.sustain + dt * (.45 + s), 3.2);
+    // The cloud starts wide and thick, and keeps spreading while you hold the shape.
+    if (s > .02) state.sustain = Math.min(state.sustain + dt * (.6 + 1.2 * s), 3.2);
     else state.sustain = Math.max(0, state.sustain - dt * .9);
 
     const b = state.breath;
@@ -539,27 +521,20 @@
     const mouth = face.mouth;
     if (state.space && state.pointer.seen) { cx = state.pointer.x; cy = state.pointer.y; }
     else if (mouth) { const m = toGlass(mouth.x, mouth.y); cx = m.x; cy = m.y; }   // fog spreads from your mouth
-    else if (state.split) { cx = .25; }
     else if (s > 0) {
       cx += Math.sin(T * .7 + startSeed) * .05;
       cy += Math.sin(T * .53 + startSeed * 2) * .05;
     }
-    b.x += (cx * R.aspect - b.x) * Math.min(1, dt * 5);
-    b.y += (cy - b.y) * Math.min(1, dt * 5);
-    b.r = .17 + state.sustain * .62;
+    // Follow the mouth closely: the fog comes from wherever your lips are now.
+    const follow = mouth ? 18 : 5;
+    b.x += (cx * R.aspect - b.x) * Math.min(1, dt * follow);
+    b.y += (cy - b.y) * Math.min(1, dt * follow);
+    b.r = .24 + state.sustain * .62;
     b.s = s;
-    if (hooks.breath) hooks.breath(s, b.x / R.aspect, b.y);
-
-    // The rival's breath, as last reported.
-    const b2 = state.breath2;
-    if (now - b2.seen > 500) b2.s = 0;
-    if (b2.s > .02) b2.sustain = Math.min(b2.sustain + dt * (.45 + b2.s), 3.2);
-    else b2.sustain = Math.max(0, b2.sustain - dt * .9);
-    b2.r = .17 + b2.sustain * .62;
 
     // A fogged pane gathers water over time, and a drop now and then runs down it.
     state.fogLevel = s > .05 ? Math.min(1, state.fogLevel + dt * .4) : Math.max(0, state.fogLevel - dt * LINGER[state.linger].evap);
-    if (state.fogLevel > .5 && Math.random() < dt * .22 && !state.split) {
+    if (state.fogLevel > .5 && Math.random() < dt * .22 ) {
       drops.spawn(Math.random(), .55 + Math.random() * .42, 5.2 + Math.random() * 1.8);
     }
 
@@ -592,7 +567,7 @@
 
     // Passes.
     R.drawScene(T + startSeed);
-    const used = R.simulate(dt, T, [b, state.breath2], state.strokes, LINGER[state.linger].evap, state.clean);
+    const used = R.simulate(dt, T, [b], state.strokes, LINGER[state.linger].evap, state.clean);
     state.strokes.splice(0, used);
     state.clean = state.clean > .5 ? .22 : (state.clean > .01 ? state.clean * .94 : 0);
 
@@ -601,7 +576,6 @@
 
     state.fade += (state.fadeTarget - state.fade) * Math.min(1, dt * 2.4);
     R.composite(T, state.look, state.fade);
-    if (state.overlay) { state.overlay.update(dt); state.overlay.draw(); }
 
     if (state.saveNext) {
       state.saveNext = false;
@@ -616,123 +590,29 @@
     }
   }
 
-  // ---------- Modes ----------
-  const L = {
-    root: $('landing'), find: $('land-find'), solo: $('land-solo'), status: $('land-status'), ghost: $('land-ghost'),
-    cancel: $('land-cancel'), buttons: $('land-buttons'), searching: $('land-search'),
-  };
+  // ---------- Start ----------
+  const L = { root: $('landing'), start: $('land-solo') };
 
-  async function startTrackers() {
-    await getCam();
-    await Promise.all([hands.start(), face.start()]);
-    state.handsOn = true;
-    $('btn-hands').setAttribute('aria-pressed', 'true');
-  }
-
-  L.solo.onclick = async () => {
+  L.start.onclick = async () => {
     sound.ensure();
     document.body.classList.remove('landing');
     L.root.hidden = true;
     wake();
     try {
-      hint('Loading. Your camera stays on this computer.', 12000);
-      await startTrackers();
+      hint('Loading. Your camera stays on this laptop.', 12000);
+      await getCam();
+      await Promise.all([hands.start(), face.start()]);
+      state.handsOn = true;
+      $('btn-hands').setAttribute('aria-pressed', 'true');
       await setScene(3);
       syncPreview();
       cancelIntro();
-      hint('Make a blowing face to fog the glass. Then point to draw, close all your fingers to wipe, open your hand to lift.', 8000);
+      hint('Round your lips like you’re blowing on glass. Then point to draw, close all your fingers to wipe.', 8000);
     } catch (e) {
       console.warn(e);
       hint('No camera. Hold Space to fog the glass and draw with your mouse.', 6000);
     }
   };
-
-  let net = null;
-  async function beginMatch(netObj, remoteStream) {
-    const remote = $('rival');
-    remote.srcObject = remoteStream;
-    await remote.play().catch(() => {});
-    L.root.hidden = true;
-    document.body.classList.remove('landing');
-    Mist.app.match = new Mist.Versus(Mist.app, netObj, remote);
-    Mist.app.match.start();
-  }
-
-  function showGhostOffer() { L.ghost.hidden = false; }
-
-  L.find.onclick = async () => {
-    sound.ensure();
-    L.buttons.hidden = true;
-    L.searching.hidden = false;
-    L.status.textContent = 'Allow your camera to play';
-    cancelIntro();
-    try {
-      await getCam();
-    } catch (e) {
-      L.status.textContent = 'You need a camera to play a match. You can still play alone.';
-      L.buttons.hidden = false;
-      L.searching.hidden = true;
-      return;
-    }
-    L.status.textContent = 'Getting the glass ready';
-    await Promise.all([hands.start(), face.start()]).catch(e => console.warn(e));
-    state.handsOn = true;
-    const room = new URLSearchParams(location.search).get('room') || 'lobby';
-    net = new Mist.Net({
-      room,
-      onStatus: st => { if (st === 'searching' || st === 'waiting') L.status.textContent = 'Looking for someone to play'; },
-    });
-    setTimeout(showGhostOffer, 12000);
-    try {
-      const remote = await net.find(state.camStream);
-      beginMatch(net, remote);
-    } catch (e) {
-      console.warn(e);
-      L.status.textContent = 'Could not reach the matchmaking service. Check your connection.';
-    }
-  };
-
-  L.cancel.onclick = () => location.reload();
-
-  function playGhost(skill = .55) {
-    if (net) net.cancel();
-    const g = new Mist.GhostNet({ skill });
-    g.paneAspect = R.aspect / 2;
-    return beginMatch(g, g.stream());
-  }
-  L.ghost.onclick = playGhost;
-
-  function enterSplit(remote) {
-    state.split = true;
-    state.linger = 2;
-    document.body.classList.add('in-match');
-    resetSplit(remote);
-    state.scene = 3;
-    syncPreview();
-    $('status').hidden = true;
-  }
-  function resetSplit(remote) {
-    state.split = true;
-    R.setSplit(camEl, remote);
-    clean();
-    drops.clear();
-    state.breath.x = .25 * R.aspect;
-    state.breath2.s = 0;
-    state.sustain = 0;
-    state.allowTouch = state.allowBreath = false;
-    state.fadeTarget = 1;
-  }
-  function enterFull(video) {
-    state.split = false;
-    R.split = null;
-    R.setVideo(video, true, 1.04);
-    state.fade = .3;
-    state.fadeTarget = .7;
-    clean();
-    drops.clear();
-    state.allowBreath = state.allowTouch = false;
-    hooks.stroke = hooks.breath = null;
-  }
 
   document.body.classList.add('landing');
   wake();
@@ -740,15 +620,7 @@
 
   // Exposed for testing and tinkering from the console.
   Mist.app = {
-    state, R, drops, hands, face, sound, camEl, hooks, intro, cancelIntro, addStroke, addRemoteStroke, clean, setScene, setTool, hint,
-    enterSplit, resetSplit, enterFull, playGhost,
-    setAllowed(breath, touch) { state.allowBreath = breath; state.allowTouch = touch; },
-    setOverlay(o) { state.overlay = o; },
-    setRemoteBreath(s, x, y) {
-      const b = state.breath2;
-      b.s = s; b.seen = performance.now();
-      b.x = x * R.aspect; b.y = y;
-    },
+    state, R, drops, hands, face, sound, camEl, intro, cancelIntro, addStroke, clean, setScene, setTool, hint,
     tick,
     // Advance exactly n frames, even while the tab is in the background.
     step(n = 1) { for (let i = 0; i < n; i++) { last -= 1000 / 60; tick(last + 1000 / 60); last = performance.now(); } },

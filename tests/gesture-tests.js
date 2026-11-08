@@ -202,57 +202,35 @@ test('Holding still does not pile up points', t => {
 
 // ---------- Blow face ----------
 const face = o => ({ pucker: 0, funnel: 0, puff: 0, jaw: 0, smile: 0, ...o });
-const runBlow = (seq, ms) => { const d = new Mist.BlowDetector(); let peak = 0; const n = Math.round(ms / 33); for (let i = 0; i < n; i++) { const f = typeof seq === 'function' ? seq(i, n) : seq; peak = Math.max(peak, d.update(f, .033)); } return { peak, end: d.strength }; };
-test('A blowing face fogs the glass', t => {
-  t(runBlow(i => i < 10 ? face({ pucker: .05 }) : face({ pucker: .75, funnel: .3 }), 1200).peak > .8, 'pucker');
-  t(runBlow(i => i < 10 ? face({}) : face({ funnel: .6, jaw: .2 }), 1200).peak > .6, 'funnel');
-  t(runBlow(i => i < 10 ? face({}) : face({ pucker: .4, puff: .6 }), 1200).peak > .7, 'puffed');
-});
-test('Everyday faces do not fog it', t => {
-  t(runBlow(face({ pucker: .12, funnel: .1 }), 3000).peak < .05, 'resting');
-  t(runBlow(face({ smile: .9 }), 3000).peak < .05, 'smile');
-  t(runBlow(i => face({ jaw: .9, funnel: .55 }), 3000).peak < .1, 'yawn or open mouth');
-  t(runBlow(i => face({ jaw: .35 * Math.abs(Math.sin(i * .4)), funnel: .22 * Math.abs(Math.sin(i * .4)) }), 4000).peak < .15, 'talking');
-  t(runBlow(i => i % 40 === 0 ? face({ pucker: .8 }) : face({}), 3000).peak < .1, 'a flicker');
-  t(runBlow(null, 2000).peak === 0, 'no face');
-});
-test('A naturally pursed resting mouth still has to blow on purpose', t => {
-  t(runBlow(face({ pucker: .28 }), 4000).peak < .1, 'rests pursed');
-  t(runBlow(i => i < 60 ? face({ pucker: .28 }) : face({ pucker: .85 }), 3500).peak > .6, 'then blows');
-});
-test('Blowing stops when you stop', t => {
-  t(runBlow(i => i < 40 ? face({ pucker: .8 }) : face({}), 3000).end < .03, 'stops');
-});
-
-// ---------- Judging a drawing ----------
-const judge = paint => {
-  const w = 150, h = 180, g = new Float32Array(w * h).fill(1);
-  const clearAt = (x, y, r) => { for (let j = Math.max(0, y - r); j <= Math.min(h - 1, y + r); j++) for (let i = Math.max(0, x - r); i <= Math.min(w - 1, x + r); i++) if ((i - x) ** 2 + (j - y) ** 2 <= r * r) g[j * w + i] = 0; };
-  const pa = .8, S = .72;
-  paint({ g, w, h, clearAt, toCell: (dx, dy) => [Math.round((.5 + dx * S / pa) * w), Math.round((.5 + dy * S) * h)] });
-  return { g, w, h, pa };
-};
-const designPts = i => Mist.Designs.sample(i);
-const scoreOf = (i, paint) => { const j = judge(paint); return Mist.Designs.score(j, 0, j.w, designPts(i), j.pa, { scale: .72 }).score; };
-test('The judge rewards the better drawing, for every design', t => {
-  for (let i = 0; i < Mist.Designs.LIST.length; i++) {
-    const pts = designPts(i);
-    const line = (c, map = p => p) => { for (const p of pts) { const q = map(p); const [x, y] = c.toCell(q[0], q[1]); c.clearAt(x, y, 2); } };
-    const perfect = scoreOf(i, c => line(c));
-    const steady = scoreOf(i, c => line(c, p => [p[0] + Math.sin(p[1] * 30) * .008, p[1] + Math.cos(p[0] * 30) * .008]));
-    const shaky = scoreOf(i, c => line(c, p => [p[0] + Math.sin(p[1] * 40) * .04, p[1] + Math.cos(p[0] * 40) * .04]));
-    const half = scoreOf(i, c => { pts.slice(0, pts.length >> 1).forEach(p => { const [x, y] = c.toCell(p[0], p[1]); c.clearAt(x, y, 2); }); });
-    const scribble = scoreOf(i, c => { for (let k = 0; k < 1400; k++) { c.clearAt(Math.round(c.w / 2 + Math.sin(k * .05) * 58), Math.round(c.h / 2 + Math.cos(k * .071) * 62), 2); } });
-    const wiped = scoreOf(i, c => { for (let y = 40; y < 140; y += 4) for (let x = 20; x < 130; x += 4) c.clearAt(x, y, 4); });
-    const noBlow = (() => { const j = judge(() => {}); j.g.fill(0); return Mist.Designs.score(j, 0, j.w, pts, j.pa, { scale: .72 }).score; })();
-    const blank = scoreOf(i, () => {});
-    const info = { design: Mist.Designs.LIST[i].name, perfect, steady, shaky, half, scribble, wiped, noBlow, blank };
-    (window.scoreTable = window.scoreTable || []).push(info);
-    t(perfect >= 90, info);
-    t(perfect >= steady && steady > shaky, info);
-    t(steady > half && steady > scribble && steady > wiped, info);
-    t(noBlow < 35 && blank === 0, info);
+// Readings arrive about 30 times a second.
+const blow = (seq, ms) => { const d = new Mist.BlowDetector(); const out = []; const n = Math.round(ms / 33);
+  for (let i = 0; i < n; i++) out.push(d.update(typeof seq === 'function' ? seq(i, n) : seq, .033)); return out; };
+const firstAbove = (arr, v) => { const i = arr.findIndex(x => x > v); return i < 0 ? Infinity : i * 33; };
+test('Rounding the lips fogs the glass within a tenth of a second', t => {
+  for (const shape of [{ pucker: .5 }, { pucker: .75, funnel: .3 }, { funnel: .45 }, { funnel: .5, jaw: .6 }, { pucker: .35, puff: .4 }]) {
+    const r = blow(i => i < 15 ? face({ pucker: .04 }) : face(shape), 1500);
+    const ms = firstAbove(r, .5) - 15 * 33;
+    t(ms <= 100, { shape, ms });
   }
+});
+test('A gentle round mouth held for 8 seconds keeps fogging', t => {
+  const r = blow(i => i < 15 ? face({ pucker: .05 }) : face({ pucker: .38 }), 8500);
+  t(r.at(-1) > .8, { end: r.at(-1) });
+});
+test('Fog stops quickly when the lips relax', t => {
+  const r = blow(i => i < 60 ? face({ pucker: .8 }) : face({ pucker: .05 }), 3000);
+  t(firstAbove(r.slice(60).map(x => -x), -.05) <= 600, { tail: r.slice(60, 80).map(x => +x.toFixed(2)) });
+});
+test('Ordinary faces do not fog it', t => {
+  t(Math.max(...blow(face({ pucker: .1, funnel: .06 }), 4000)) < .05, 'resting');
+  t(Math.max(...blow(face({ smile: .9, pucker: .15 }), 4000)) < .05, 'smiling');
+  t(Math.max(...blow(face({ jaw: .9, funnel: .08, pucker: .05 }), 4000)) < .05, 'mouth wide open, not rounded');
+  t(Math.max(...blow(i => i % 40 === 0 ? face({ pucker: .8 }) : face({}), 4000)) < .1, 'single-frame flicker');
+  t(Math.max(...blow(null, 2000)) === 0, 'no face');
+});
+test('Someone whose mouth rests a bit pursed still has to round on purpose', t => {
+  t(Math.max(...blow(face({ pucker: .17 }), 4000)) < .1, 'resting pursed');
+  t(blow(i => i < 60 ? face({ pucker: .17 }) : face({ pucker: .5 }), 3000).at(-1) > .8, 'then rounds');
 });
 
 window.results = results;

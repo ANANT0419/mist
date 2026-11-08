@@ -23,71 +23,16 @@
   <div id="pip-state">Show your hand</div>
 </div>
 
-<video id="rival" playsinline muted hidden></video>
-
 <section id="landing">
   <div class="land-card">
     <h1>mist</h1>
-    <p class="land-lede">Blow on the glass. Draw with your finger.<br>Whoever draws it better wins 10 seconds of magic.</p>
-    <div id="land-buttons" class="land-buttons">
-      <button id="land-find" class="pill primary">Find a match</button>
-      <button id="land-solo" class="pill">Play alone</button>
+    <p class="land-lede">Round your lips to fog the glass.<br>Draw with your finger. Wipe with your fist.</p>
+    <div class="land-buttons">
+      <button id="land-solo" class="pill primary">Start</button>
     </div>
-    <div id="land-search" class="land-search" hidden>
-      <div class="pulse" aria-hidden="true"></div>
-      <p id="land-status" role="status"></p>
-      <button id="land-ghost" class="pill" hidden>No one yet? Play a ghost</button>
-      <button id="land-cancel" class="link">Cancel</button>
-    </div>
-    <p class="land-foot">Live video goes directly between players. Nothing is recorded or stored unless you save your own clip.</p>
+    <p class="land-foot">Your camera stays on this laptop. Nothing is recorded or sent anywhere.</p>
   </div>
 </section>
-
-<section id="vs" hidden>
-  <div id="vs-wall" aria-hidden="true"></div>
-  <div id="vs-tag-0" class="vs-tag left">You</div>
-  <div id="vs-tag-1" class="vs-tag right">Rival</div>
-  <svg id="vs-ghost-0" class="vs-ghost left" viewBox="0 0 100 100" aria-hidden="true"></svg>
-  <svg id="vs-ghost-1" class="vs-ghost right" viewBox="0 0 100 100" aria-hidden="true"></svg>
-  <div id="vs-score-0" class="vs-score left" hidden></div>
-  <div id="vs-score-1" class="vs-score right" hidden></div>
-  <div class="vs-center" role="status" aria-live="polite">
-    <div id="vs-title"></div>
-    <div id="vs-sub"></div>
-  </div>
-  <div id="vs-blow" hidden>Purse your lips and blow at the camera</div>
-  <div id="vs-card" hidden>
-    <span class="vs-card-label">Draw this</span>
-    <svg id="vs-card-svg" viewBox="0 0 100 100" aria-hidden="true"></svg>
-    <strong id="vs-card-name"></strong>
-    <span class="vs-card-hint">Blow first. Then trace it with your finger.</span>
-  </div>
-  <div id="vs-timer" hidden><div id="vs-bar"></div></div>
-  <div id="vs-left" hidden>
-    <p>Your rival left the match.</p>
-    <button class="pill primary" onclick="location.reload()">Find someone new</button>
-  </div>
-</section>
-
-<section id="prize" hidden>
-  <div id="prize-num" aria-live="off"></div>
-  <div class="prize-text" role="status" aria-live="polite">
-    <div id="prize-title"></div>
-    <div id="prize-sub"></div>
-  </div>
-  <button id="prize-skip" class="link" hidden>Skip</button>
-</section>
-
-<div id="keep-card" hidden>
-  <h2 id="keep-title"></h2>
-  <p id="keep-sub"></p>
-  <video id="keep-clip" hidden loop muted playsinline></video>
-  <div class="keep-actions">
-    <button id="keep-save" class="pill" hidden>Save my clip</button>
-    <button id="keep-again" class="pill primary">Play again</button>
-    <button class="pill" onclick="location.reload()">Leave</button>
-  </div>
-</div>
 
 <nav id="dock" aria-label="Controls">
   <div class="group">
@@ -139,13 +84,8 @@
 <script src="js/renderer.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/gesture.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="js/hands.js"></script>
 <script src="js/face.js"></script>
-<script src="js/designs.js"></script>
-<script src="js/net.js"></script>
-<script src="js/prize.js"></script>
-<script src="js/versus.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

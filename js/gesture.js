@@ -209,31 +209,30 @@ Mist.Pen = class {
 };
 
 // ---------- Blow face ----------
-// Pursed lips (pucker or funnel), helped by puffed cheeks. Measured against your own resting
-// face, since some mouths simply rest more puckered. A wide-open mouth or a smile doesn't count.
+// Rounded lips (pucker or an "O") fog the glass straight away, the moment they form.
+// Your resting mouth is learned from the least rounded you ever look, and never from a held
+// rounding, so a gentle, steady round mouth keeps fogging. A smile doesn't count.
 Mist.BlowDetector = class {
   constructor() { this.strength = 0; this.base = null; this.hold = 0; this.level = 0; }
 
   update(f, dt) {
     let target = 0;
     if (f) {
-      const raw = Math.max(f.pucker, f.funnel * 1.1) + .4 * f.puff;
-      if (this.base === null) this.base = Math.min(raw, .25);
-      // Rest position drifts slowly, and only while you're clearly not blowing.
-      else if (raw < this.base) this.base += (raw - this.base) * Math.min(1, dt * 3);
-      else if (raw < this.base + .12) this.base += (raw - this.base) * Math.min(1, dt * .15);
-      let s = raw - this.base;
-      s -= Math.max(0, f.jaw - .45) * 1.2;
-      s -= f.smile * .8;
-      this.level = Math.max(0, Math.min(1, (s - .16) / .3));
+      const rounded = Math.max(f.pucker, f.funnel * 1.15) + .3 * f.puff;
+      if (this.base === null) this.base = Math.min(rounded, .15);
+      else if (rounded < this.base) this.base += (rounded - this.base) * Math.min(1, dt * 4);
+      else if (rounded < this.base + .04) this.base = Math.min(.15, this.base + dt * .02);
+      const s = rounded - this.base - f.smile * .6;
+      const t = Math.max(0, Math.min(1, (s - .08) / .2));
+      this.level = t * t * (3 - 2 * t);
       target = this.level;
     } else {
       this.level = 0;
     }
-    // A passing expression shouldn't fog the glass.
-    this.hold = target > .05 ? this.hold + dt : Math.max(0, this.hold - dt * 3);
-    const gated = this.hold > .1 ? target : 0;
-    this.strength += (gated - this.strength) * Math.min(1, dt * (gated > this.strength ? 10 : 4));
+    // Only a single-frame flicker is ignored.
+    this.hold = target > .05 ? this.hold + dt : 0;
+    const gated = this.hold >= .05 ? target : 0;      // two face readings, about 60ms
+    this.strength += (gated - this.strength) * Math.min(1, dt * (gated > this.strength ? 28 : 6));
     if (this.strength < .004) this.strength = 0;
     return this.strength;
   }

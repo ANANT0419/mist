@@ -41,8 +41,8 @@ Mist.Face = class {
     const v = this.video;
     if (!this.busy && now >= this.nextSend && v.videoWidth && v.readyState >= 2) {
       this.busy = true;
-      this.nextSend = now + 60;      // about 15 readings a second is plenty for an expression
-      this.t += 66;
+      this.nextSend = now + 28;      // read the face as often as the camera allows
+      this.t += 33;
       const k = Math.min(1, 480 / v.videoWidth);
       createImageBitmap(v, { resizeWidth: Math.round(v.videoWidth * k), resizeHeight: Math.round(v.videoHeight * k), resizeQuality: 'low' })
         .then(bitmap => this.worker.postMessage({ type: 'frame', bitmap, t: this.t }, [bitmap]))

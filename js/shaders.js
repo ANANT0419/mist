@@ -77,7 +77,7 @@ void main(){
     float d=length(q-B.xy)/(B.z*(.7+.65*n));
     float g=smoothstep(1.,.2,d);
     float target=mix(1.,.2,smoothstep(.02,.6,mem));
-    float rate=B.w*g*(1.-.7*wet)*5.5;
+    float rate=B.w*g*(1.-.7*wet)*9.;
     if(f<target) f+=(target-f)*(1.-exp(-rate*uDt));
   }
 
