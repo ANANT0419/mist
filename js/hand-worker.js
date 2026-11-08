@@ -3,6 +3,7 @@ const BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 
 let tracker = null;
+let lastT = -1;
 let vision = null;
 
 // The CDN serves this bundle with a MIME type importScripts refuses, so load it as text.
@@ -51,7 +52,9 @@ self.onmessage = async ({ data }) => {
     const t0 = performance.now();
     let hands = [];
     try {
-      const res = tracker.detectForVideo(data.bitmap, data.t);
+      // The tracker rejects any timestamp that doesn't move forward.
+      const ts = lastT = Math.max(data.t, lastT + 1);
+      const res = tracker.detectForVideo(data.bitmap, ts);
       hands = (res.landmarks || []).map((lm, i) => ({
         lm,
         world: res.worldLandmarks[i],

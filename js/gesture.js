@@ -32,11 +32,25 @@ Mist.Gesture = (() => {
     // angle, this stays reliable when the finger points at the camera and its bones look short.
     const D = (a, b) => Math.hypot(w[a].x - w[b].x, w[a].y - w[b].y, w[a].z - w[b].z);
     const straight = D(5, 8) / ((D(5, 6) + D(6, 7) + D(7, 8)) || 1e-9);
-    return { curl, tipNear, straight };
+    // Reach: how far each fingertip is from the wrist compared with its middle knuckle. An
+    // outstretched finger reaches well past its knuckle (about 1.35), a folded one comes back
+    // toward the palm (under 1). It's a second, independent opinion to the joint angles.
+    const reach = FINGERS.map(([m, p, d, t]) => D(0, t) / (D(0, p) || 1e-9));
+    return { curl, tipNear, straight, reach };
   }
 
   // What this one frame looks like. null means "can't tell", and the current state then stands.
-  function evidence(idx, mid, ring, pinky, tipNear, straight = 0) {
+  function evidence(idx, mid, ring, pinky, tipNear, straight = 0, reach = null) {
+    const e = angles(idx, mid, ring, pinky, tipNear, straight);
+    if (!reach) return e;
+    // Both opinions must agree before the glass is touched. A fist needs every fingertip folded
+    // back; a point needs the index reaching out and the others not.
+    if (e === 'fist' && Math.max(reach[0], reach[1], reach[2], reach[3]) > 1.06) return null;
+    if (e === 'finger' && (reach[0] < 1.15 || (reach[1] > 1.12) + (reach[2] > 1.12) + (reach[3] > 1.12) >= 2)) return null;
+    return e;
+  }
+
+  function angles(idx, mid, ring, pinky, tipNear, straight) {
     const rest = (mid + ring + pinky) / 3;
     // A fingertip tucked against the palm settles it: that finger is not out, whatever its
     // joints appear to read. (Real photos: fists sit at .4 to .75, a real point at about 1.35.)
@@ -83,8 +97,10 @@ Mist.Gesture = (() => {
       else for (let i = 0; i < 4; i++) this.c[i] += (r.curl[i] - this.c[i]) * k;
       this.idx = this.c[0];
       this.straight = this.straight === undefined ? r.straight : this.straight + (r.straight - this.straight) * k;
-      const e = evidence(this.c[0], this.c[1], this.c[2], this.c[3], r.tipNear, this.straight);
-      this.last = { curl: this.c, idx: this.idx, tipNear: r.tipNear, straight: this.straight, evidence: e };
+      if (!this.reach) this.reach = r.reach.slice();
+      else for (let i = 0; i < 4; i++) this.reach[i] += (r.reach[i] - this.reach[i]) * k;
+      const e = evidence(this.c[0], this.c[1], this.c[2], this.c[3], r.tipNear, this.straight, this.reach);
+      this.last = { curl: this.c, idx: this.idx, tipNear: r.tipNear, straight: this.straight, reach: this.reach, evidence: e };
 
       // One noisy frame only slows a change down; it cannot trigger or cancel one.
       for (const s in this.acc) this.acc[s] = s === e ? this.acc[s] + dt : Math.max(0, this.acc[s] - dt);
@@ -106,7 +122,7 @@ Mist.Gesture = (() => {
     get touching() { return this.state !== 'hover' && !this.lifted; }
   }
 
-  return { read, evidence, Machine, NEED };
+  return { read, evidence, angles, Machine, NEED };
 })();
 
 // ---------- One Euro filter ----------
@@ -209,30 +225,61 @@ Mist.Pen = class {
 };
 
 // ---------- Blow face ----------
-// Rounded lips (pucker or an "O") fog the glass straight away, the moment they form.
-// Your resting mouth is learned from the least rounded you ever look, and never from a held
-// rounding, so a gentle, steady round mouth keeps fogging. A smile doesn't count.
+// Rounded lips fog the glass the moment they form. Two independent signs are read:
+//   shape:  the mouth corners pull in (measured from the face mesh, relative to YOUR relaxed mouth)
+//   model:  the tracker's own pucker / funnel scores, also relative to your relaxed face
+// Either one is enough, because the model's scores differ a lot from person to person, while
+// the corners always pull in when you purse your lips. A smile widens the mouth, so it never counts.
 Mist.BlowDetector = class {
-  constructor() { this.strength = 0; this.base = null; this.hold = 0; this.level = 0; }
+  constructor() {
+    this.rest = null;     // your relaxed face, learned as you go
+    this.strength = 0; this.score = 0; this.on = false; this.hold = 0; this.off = 0; this.n = 0;
+  }
+
+  measure(f) {
+    const r = this.rest;
+    const rb = Math.max(f.pucker, f.funnel * 1.15) + .3 * f.puff;
+    const c = x => Math.max(0, Math.min(1, x));
+    const narrow = f.width && r.width ? (r.width - f.width) / r.width : 0;
+    const shape = c((narrow - .045) / .09);                    // corners in by 4.5% starts, 13.5% is full
+    const model = c((rb - r.b - .07) / .2);
+    const smiling = c((f.smile - r.smile - .2) / .3);
+    return { rb, narrow, shape, model, score: Math.max(shape, model) * (1 - smiling) };
+  }
 
   update(f, dt) {
-    let target = 0;
-    if (f) {
-      const rounded = Math.max(f.pucker, f.funnel * 1.15) + .3 * f.puff;
-      if (this.base === null) this.base = Math.min(rounded, .15);
-      else if (rounded < this.base) this.base += (rounded - this.base) * Math.min(1, dt * 4);
-      else if (rounded < this.base + .04) this.base = Math.min(.15, this.base + dt * .02);
-      const s = rounded - this.base - f.smile * .6;
-      const t = Math.max(0, Math.min(1, (s - .08) / .2));
-      this.level = t * t * (3 - 2 * t);
-      target = this.level;
+    if (!f) {
+      this.on = false; this.hold = 0; this.score = 0;
     } else {
-      this.level = 0;
+      const rb0 = Math.max(f.pucker, f.funnel * 1.15) + .3 * f.puff;
+      if (!this.rest) this.rest = { width: f.width || 0, b: Math.min(rb0, .15), smile: Math.min(f.smile, .3) };
+      const m = this.measure(f);
+      this.last = m;
+      this.score = m.score;
+      this.n++;
+
+      // On fast, off a touch slower, and a single odd reading never switches it.
+      if (!this.on) { this.hold = m.score > .3 ? this.hold + dt : 0; if (this.hold >= .05) { this.on = true; this.off = 0; } }
+      else { this.off = m.score < .12 ? this.off + dt : 0; if (this.off >= .07) { this.on = false; this.hold = 0; } }
+
+      // Learn the relaxed face, only while not blowing. The first half second learns quickly.
+      if (!this.on && m.score < .12) {
+        const r = this.rest, quick = this.n < 15 ? 8 : 1;
+        // A smile stretches the mouth, so nothing about its width is learned during one.
+        if (f.width && f.smile - r.smile < .12 && f.smile < .4) {
+          // Relaxed is the widest your mouth sits without smiling, so widening is learned fast.
+          const up = f.width > r.width;
+          r.width += (f.width - r.width) * Math.min(1, dt * (up ? 3 * quick : .4 * quick));
+        }
+        if (m.rb < r.b) r.b += (m.rb - r.b) * Math.min(1, dt * 4);
+        else if (m.rb < r.b + .04) r.b = Math.min(.2, r.b + dt * .03);
+        r.smile += (f.smile - r.smile) * Math.min(1, dt * (f.smile < r.smile ? 3 : .3));
+      }
     }
-    // Only a single-frame flicker is ignored.
-    this.hold = target > .05 ? this.hold + dt : 0;
-    const gated = this.hold >= .05 ? target : 0;      // two face readings, about 60ms
-    this.strength += (gated - this.strength) * Math.min(1, dt * (gated > this.strength ? 28 : 6));
+    const s = this.score, eased = s * s * (3 - 2 * s);
+    // Thick fog from the first moment: never a faint wisp while your lips are round.
+    const target = this.on ? Math.max(.65, eased) : 0;
+    this.strength += (target - this.strength) * Math.min(1, dt * (target > this.strength ? 30 : 10));
     if (this.strength < .004) this.strength = 0;
     return this.strength;
   }

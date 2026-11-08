@@ -407,6 +407,22 @@
 
   // ---------- Hands to strokes ----------
   const handCursors = [$('hand-0'), $('hand-1')];
+  // Lips meter
+  const lipsEl = $('lips'), lipsText = lipsEl.querySelector('span');
+  let lipsWord = '';
+  function updateLips() {
+    const on = face.running && state.handsOn;
+    lipsEl.hidden = !on;
+    if (!on) return;
+    const seen = !!face.mouth, B = face.blow;
+    const v = seen ? Math.min(1, B.score / .3) : 0;
+    lipsEl.style.setProperty('--v', v.toFixed(3));
+    lipsEl.dataset.seen = seen ? '1' : '0';
+    lipsEl.dataset.on = B.on ? '1' : '0';
+    const w = !seen ? 'Looking for your face' : B.on ? 'Fogging' : 'Round your lips';
+    if (w !== lipsWord) lipsText.textContent = lipsWord = w;
+  }
+
   const WORDS = { finger: 'Drawing', fist: 'Wiping', hover: 'Hand lifted' };
 
   function runHands(now, dt) {
@@ -466,11 +482,12 @@
       `display ${(1000 / state.frameAvg).toFixed(0)} fps  quality ${R.quality.toFixed(2)}`];
     if (face.face) {
       const f = face.face;
-      lines.push(`face ${face.infer.toFixed(0)} ms  pucker ${f.pucker.toFixed(2)} funnel ${f.funnel.toFixed(2)} cheeks ${f.puff.toFixed(2)} jaw ${f.jaw.toFixed(2)} smile ${f.smile.toFixed(2)}  rest ${(face.blow.base || 0).toFixed(2)}  blowing ${face.strength.toFixed(2)}`);
+      const B = face.blow, m = B.last || {};
+      lines.push(`face ${face.infer.toFixed(0)} ms  pucker ${f.pucker.toFixed(2)} funnel ${f.funnel.toFixed(2)} smile ${f.smile.toFixed(2)}  width ${(f.width || 0).toFixed(3)} rest ${(B.rest?.width || 0).toFixed(3)} narrow ${((m.narrow || 0) * 100).toFixed(1)}%  shape ${(m.shape || 0).toFixed(2)} model ${(m.model || 0).toFixed(2)}  blowing ${face.strength.toFixed(2)}`);
     }
     for (const h of slots) {
       const m = h.machine.last;
-      if (m) lines.push(`index ${m.idx.toFixed(2)} middle ${m.curl[1].toFixed(2)} ring ${m.curl[2].toFixed(2)} pinky ${m.curl[3].toFixed(2)} near ${m.tipNear.toFixed(2)} straight ${m.straight.toFixed(2)}  sees ${m.evidence}  state ${h.machine.state}${h.machine.lifted ? ' (lifted)' : ''}`);
+      if (m) lines.push(`index ${m.idx.toFixed(2)} middle ${m.curl[1].toFixed(2)} ring ${m.curl[2].toFixed(2)} pinky ${m.curl[3].toFixed(2)} near ${m.tipNear.toFixed(2)} straight ${m.straight.toFixed(2)} reach ${m.reach ? m.reach.map(v => v.toFixed(2)).join('/') : ''}  sees ${m.evidence}  state ${h.machine.state}${h.machine.lifted ? ' (lifted)' : ''}`);
     }
     g.fillStyle = 'rgba(0,0,0,.55)';
     g.fillRect(12, 56, 760, 12 + lines.length * 17);
@@ -511,6 +528,7 @@
     let s = state.allowBreath ? Math.max(introS, faceS, spaceS, state.forceBreath) : 0;
     sound.breathe(Math.max(spaceS, state.allowBreath ? faceS : 0));
     $('status').dataset.blow = s > .05 ? '1' : '0';
+    updateLips();
 
     // The cloud starts wide and thick, and keeps spreading while you hold the shape.
     if (s > .02) state.sustain = Math.min(state.sustain + dt * (.6 + 1.2 * s), 3.2);

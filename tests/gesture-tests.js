@@ -233,6 +233,24 @@ test('Someone whose mouth rests a bit pursed still has to round on purpose', t =
   t(blow(i => i < 60 ? face({ pucker: .17 }) : face({ pucker: .5 }), 3000).at(-1) > .8, 'then rounds');
 });
 
+test('Pursed lips fog it from mouth shape alone, even when the model barely notices', t => {
+  const rest = face({ width: .62, pucker: .05 });
+  for (const w of [.55, .53, .5]) {
+    const r = blow(i => i < 30 ? rest : face({ width: w, pucker: .1 }), 2000);
+    t(firstAbove(r, .5) - 30 * 33 <= 100, { width: w, ms: firstAbove(r, .5) - 990 });
+  }
+});
+test('Shape: smiling, talking-width changes and starting puckered behave', t => {
+  t(Math.max(...blow(i => i < 30 ? face({ width: .62 }) : face({ width: .72, smile: .8 }), 3000)) < .05, 'smile is wider, not round');
+  t(Math.max(...blow(i => face({ width: .62 + .01 * Math.sin(i / 3) }), 4000)) < .05, 'small natural movement');
+  // Started the app with lips already pursed: relaxing teaches it, then rounding works.
+  const r = blow(i => i < 20 ? face({ width: .5 }) : i < 80 ? face({ width: .62 }) : face({ width: .52 }), 4000);
+  t(r.at(-1) > .6, { end: r.at(-1) });
+  // After a smile, the relaxed mouth must not read as rounded.
+  const q = blow(i => i < 30 ? face({ width: .62 }) : i < 90 ? face({ width: .72, smile: .8 }) : face({ width: .62, smile: .05 }), 5000);
+  t(Math.max(...q.slice(95)) < .05, 'relaxed after smiling');
+});
+
 window.results = results;
 const bad = results.filter(r => !r.ok);
 document.getElementById('out').textContent = results.map(r => `${r.ok ? 'PASS' : 'FAIL'}  ${r.pass}/${r.total}  ${r.name}${r.firstFail ? '\n      where: ' + JSON.stringify(r.by) : ''}`).join('\n') + `\n\n${bad.length ? bad.length + ' FAILED' : 'ALL PASSED'}`;
