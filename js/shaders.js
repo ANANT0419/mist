@@ -76,8 +76,8 @@ void main(){
     float n=texture(uN,q*.55+uT*.012).r;
     float d=length(q-B.xy)/(B.z*(.7+.65*n));
     float g=smoothstep(1.,.2,d);
-    float target=mix(1.,.2,smoothstep(.02,.6,mem));
-    float rate=B.w*g*(1.-.7*wet)*9.;
+    float target=mix(1.,.62,smoothstep(.05,.8,mem));   // a faint ghost of old lines, never thin fog
+    float rate=B.w*g*(1.-.2*wet)*9.;
     if(f<target) f+=(target-f)*(1.-exp(-rate*uDt));
   }
 
@@ -87,7 +87,7 @@ void main(){
 
   wet-=stoch(uDt*.075,r2);
   ridge-=stoch(uDt*.022*(.4+nE),r2);
-  mem-=stoch(uDt*.0012,r1);
+  mem-=stoch(uDt*.015,r1);                       // ghosts fade within a minute
 
   // Touch strokes as capsules.
   for(int i=0;i<uSegN;i++){

@@ -82,7 +82,8 @@
     let r = radius || (kind ? FIST_R : FINGER_R);
     if (!kind) r *= Math.min(1, R.aspect / 1.3);   // a tall window shouldn't mean a fat line
     const A = R.aspect;
-    const s = { ax: ax * A, ay, bx: bx * A, by, r, kind, mem: 1, seed };
+    // Fingers leave a faint ghost; a fist wipe leaves almost none, so wiped glass fogs back fully.
+    const s = { ax: ax * A, ay, bx: bx * A, by, r, kind, mem: kind ? .15 : .75, seed };
     state.strokes.push(s);
     state.frameLen += Math.hypot(s.bx - s.ax, s.by - s.ay);
     state.soundKind = kind;
